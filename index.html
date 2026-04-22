@@ -3,9 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Latijn Leren</title>
+<title>Lexicon Latinum</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1410">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Latijn">
+<link rel="apple-touch-icon" href="icon-192.png">
+
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
 <style>
+
+  /* ——— LOADING OVERLAY ——— */
+  #loading-overlay {
+    position: fixed; inset: 0; z-index: 999;
+    background: #0d0a06;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2rem;
+    transition: opacity 0.5s ease;
+  }
+  #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+
+  .loading-logo {
+    font-family: 'Cinzel', Georgia, serif;
+    font-size: 2.2rem; font-weight: 900;
+    color: #e8b84b;
+    letter-spacing: 0.2em;
+    text-shadow: 0 0 30px rgba(232,184,75,0.4);
+    animation: logoFade 0.8s ease forwards;
+  }
+  @keyframes logoFade { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+  .loading-sub {
+    font-family: 'Crimson Text', Georgia, serif;
+    font-style: italic; color: #d9c9a0; opacity: 0.6; font-size: 1rem;
+    margin-top: -1.5rem;
+    animation: logoFade 0.8s ease 0.2s both;
+  }
+
+  .loading-spinner {
+    width: 36px; height: 36px;
+    border: 2px solid rgba(201,148,58,0.2);
+    border-top-color: #c9943a;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-msg {
+    font-family: 'Cinzel', serif; font-size: 0.65rem;
+    letter-spacing: 0.2em; color: #c9943a; opacity: 0.6;
+    animation: logoFade 0.5s ease 0.4s both;
+  }
   :root {
     --stone: #1a1410;
     --parchment: #f0e6c8;
@@ -294,6 +346,14 @@
 </style>
 </head>
 <body>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="loading-logo">LEXICON LATINUM</div>
+  <div class="loading-sub">Verba discenda, memoria tenenda</div>
+  <div class="loading-spinner"></div>
+  <div class="loading-msg">WOORDENSCHAT LADEN…</div>
+</div>
 
 <header>
   <h1>LEXICON LATINUM</h1>
@@ -798,11 +858,77 @@ document.getElementById('input-latin').addEventListener('keydown', e => { if (e.
 window.addEventListener('pagehide', flushSyncOnUnload);
 window.addEventListener('beforeunload', flushSyncOnUnload);
 
-document.getElementById('empty-msg').textContent = 'Woordenschat wordt geladen…';
-loadState().then(() => {
-  updateQuizUI();
-  renderList();
-}).catch(() => { /* error UI already shown */ });
+// ——— SERVICE WORKER ———
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW registratie mislukt:', e));
+}
+
+// ——— LOKALE CACHE (snelle start) ———
+const LS_WORDS   = 'lexicon_cache_words';
+const LS_HISTORY = 'lexicon_cache_history';
+
+function dismissOverlay() {
+  const el = document.getElementById('loading-overlay');
+  if (!el) return;
+  el.classList.add('fade-out');
+  setTimeout(() => el.remove(), 520);
+}
+
+function loadFromCache() {
+  try {
+    const w = localStorage.getItem(LS_WORDS);
+    const h = localStorage.getItem(LS_HISTORY);
+    if (w) words   = JSON.parse(w);
+    if (h) history = JSON.parse(h);
+    return !!(w || h);
+  } catch(e) { return false; }
+}
+
+function saveToCache() {
+  try {
+    localStorage.setItem(LS_WORDS,   JSON.stringify(words));
+    localStorage.setItem(LS_HISTORY, JSON.stringify(history));
+  } catch(e) {}
+}
+
+// Patch scheduleSync zodat elke opslag ook de lokale cache bijwerkt
+const _origScheduleSync = scheduleSync;
+function scheduleSync(what) {
+  _origScheduleSync(what);
+  saveToCache();
+}
+
+async function init() {
+  const hasCached = loadFromCache();
+
+  if (hasCached) {
+    // Cache gevonden: toon app meteen, haal JSONBin stil op achtergrond op
+    loaded = true;
+    updateQuizUI();
+    renderList();
+    dismissOverlay();
+
+    loadState().then(() => {
+      saveToCache();
+      updateQuizUI();
+      renderList();
+      updateDailyCounter();
+    }).catch(() => {});
+
+  } else {
+    // Eerste keer of cache leeg: wacht op JSONBin, toon laadscherm
+    loadState().then(() => {
+      saveToCache();
+      updateQuizUI();
+      renderList();
+      dismissOverlay();
+    }).catch(() => {
+      dismissOverlay();
+    });
+  }
+}
+
+init();
 </script>
 </body>
 </html>
