@@ -613,8 +613,8 @@ function msUntilMidnight() {
 }
 
 // ——— SAVE ———
-function saveWords() { scheduleSync('words'); }
-function saveHistory() { scheduleSync('history'); }
+function saveWords()   { scheduleSync('words');   saveToCache(); }
+function saveHistory() { scheduleSync('history'); saveToCache(); }
 
 // ——— DAILY COUNTER ———
 function getTodayStats() {
@@ -891,12 +891,7 @@ function saveToCache() {
   } catch(e) {}
 }
 
-// Patch scheduleSync zodat elke opslag ook de lokale cache bijwerkt
-const _origScheduleSync = scheduleSync;
-function scheduleSync(what) {
-  _origScheduleSync(what);
-  saveToCache();
-}
+
 
 async function init() {
   const hasCached = loadFromCache();
